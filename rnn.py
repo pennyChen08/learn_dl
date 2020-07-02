@@ -1,13 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-
 import numpy as np
 from cnn import element_wise_op
 from activators import ReluActivator, IdentityActivator
 
+#对numpy数组进行element wise操作(Hadamard乘积，同位元素相乘)
+# def element_wise_op(array, op):
+#    for i in np.nditer(array,
+#                       op_flags=['readwrite']):
+#        i[...] = op(i)
 
 class RecurrentLayer(object):
+# __init__ 子类继承父类构造函数
     def __init__(self, input_width, state_width,
                  activator, learning_rate):
         self.input_width = input_width
@@ -17,35 +22,37 @@ class RecurrentLayer(object):
         self.times = 0       # 当前时刻初始化为t0
         self.state_list = [] # 保存各个时刻的state
         self.state_list.append(np.zeros(
-            (state_width, 1)))           # 初始化s0
+            (state_width, 1)))           # 初始化s0，append-增加新值
         self.U = np.random.uniform(-1e-4, 1e-4,
-            (state_width, input_width))  # 初始化U
+            (state_width, input_width))  # 初始化U，random-随机生成
         self.W = np.random.uniform(-1e-4, 1e-4,
-            (state_width, state_width))  # 初始化W
-
+            (state_width, state_width))  # 初始化W（权重）
+        
+# 前向传播
     def forward(self, input_array):
         '''
-        根据『式2』进行前向计算
+        前向计算
         '''
-        self.times += 1
+        self.times += 1  # 时间步
         state = (np.dot(self.U, input_array) +
-                 np.dot(self.W, self.state_list[-1]))
+                 np.dot(self.W, self.state_list[-1]))   # 点积（元素对应相乘）
         element_wise_op(state, self.activator.forward)
         self.state_list.append(state)
 
+# 后向传播
     def backward(self, sensitivity_array, 
                  activator):
         '''
-        实现BPTT算法
+        BPTT算法
         '''
-        self.calc_delta(sensitivity_array, activator)
+        self.calc_delta(sensitivity_array, activator) #delta：误差；gradient：梯度
         self.calc_gradient()
 
     def update(self):
         '''
-        按照梯度下降，更新权重
+        梯度下降更新权重
         '''
-        self.W -= self.learning_rate * self.gradient
+        self.W -= self.learning_rate * self.gradient   #gradient—求梯度，权重更新
 
     def calc_delta(self, sensitivity_array, activator):
         self.delta_list = []  # 用来保存各个时刻的误差项
@@ -61,24 +68,26 @@ class RecurrentLayer(object):
         '''
         根据k+1时刻的delta计算k时刻的delta
         '''
-        state = self.state_list[k+1].copy()
+# 讨论k时刻对k+1时刻的影响（权重）
+        state = self.state_list[k+1].copy()  # copy-复制k+1的state
         element_wise_op(self.state_list[k+1],
                     activator.backward)
         self.delta_list[k] = np.dot(
             np.dot(self.delta_list[k+1].T, self.W),
-            np.diag(state[:,0])).T
+            np.diag(state[:,0])).T  # dot-点乘，diag-对角矩阵
 
     def calc_gradient(self):
         self.gradient_list = [] # 保存各个时刻的权重梯度
         for t in range(self.times + 1):
             self.gradient_list.append(np.zeros(
-                (self.state_width, self.state_width)))
-        for t in range(self.times, 0, -1):
-            self.calc_gradient_t(t)
+                (self.state_width, self.state_width)))  # range(stop)迭代
+        for t in range(self.times, 0, -1):   # range(start,stop,step)迭代
+            self.calc_gradient_t(t)  
         # 实际的梯度是各个时刻梯度之和
         self.gradient = reduce(
             lambda a, b: a + b, self.gradient_list,
             self.gradient_list[0]) # [0]被初始化为0且没有被修改过
+# reduce(函数,可迭代对象,初始参数)
 
     def calc_gradient_t(self, t):
         '''
@@ -86,7 +95,7 @@ class RecurrentLayer(object):
         '''
         gradient = np.dot(self.delta_list[t],
             self.state_list[t-1].T)
-        self.gradient_list[t] = gradient
+        self.gradient_list[t] = gradient  # 
 
     def reset_state(self):
         self.times = 0       # 当前时刻初始化为t0
@@ -119,6 +128,7 @@ def gradient_check():
     # 求取sensitivity map
     sensitivity_array = np.ones(rl.state_list[-1].shape,
                                 dtype=np.float64)
+    
     # 计算梯度
     rl.backward(sensitivity_array, IdentityActivator())
     
@@ -149,7 +159,4 @@ def test():
     l.forward(x[1])
     l.backward(d, ReluActivator())
     return l
-
-
-
-
+# 激活函数都应用ReLU
